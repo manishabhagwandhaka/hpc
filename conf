@@ -78,6 +78,8 @@ wwsh -y node new <node name> --ipaddr=<ip for client> --hwaddr=<client > -D <ent
 wwsh -y provision set "cn01" --vnfs=centos7.7 --bootstrap=`uname -r` --files=dynamic_hosts,passwd,group,shadow,network
 # Restart dhcp / update PXE
 systemctl restart dhcpd
+systemctl restart xinetd
+systemctl status xinetd
 wwsh pxe update
 --error
 Check /etc/warewulf/provision.conf file change manually network device to ens36
@@ -85,6 +87,11 @@ network device ens36
 -----
 # restart client vm device make sure client vm has minimum of 8 gb ram and 60 gb hardisk and an
 interface configured in hostonly network same as host master vm .
+---------
+#extra
+ifconfig ens36
+wwsh node delete cn01
+----------------------
 difference between Xcat and Warewulf
 Warewulf is easy to pick up and use.
 xCAT is more complex, but offers more functionality such as compute node discovery and auto-
