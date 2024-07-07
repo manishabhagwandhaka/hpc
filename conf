@@ -1,0 +1,92 @@
+Requirements:
+master host machine
+centos 7 will be requirement and two network interfaces one in NAT for internet connection and another
+one host only where warewulf services would run.
+cline node : host only 1 interface
+rewall service can be disabled as follows:
+---------------
+systemctl disable firewalld
+systemctl stop firewalld
+----------------------
+Enable OpenHPC repository for local use
+yum install http://build.openhpc.community/OpenHPC:/1.3/CentOS_7/aarch64/ohpc-release-1.3-1.el7.aarch64.rpm
+-----------------------
+Add provisioning services on master node Install base meta-packages
+yum -y install ohpc-base
+yum -y install ohpc-warewulf
+----------------------------
+3. configure warewulf
+perl -pl -e "s/device=eth1/device=eth1/device=<hostonly interface name>/"
+/etc/warewulf/provision.conf
+
+- enable tftp services,enable einternal interface and restart and enable services
+perl -pl -e "s/device=eth1/device=eth1/device=<hostonly interface name>/"
+/etc/warewulf/provision.conf
+
+perl -pl -e "s/device=eth1/device=eth1/device=<hostonly interface name>/"
+/etc/warewulf/provision.conf
+perl -pi -e "s/^\s+disable\s+= yes/ disable = no/" /etc/xinetd.d/tftp
+ifconfig <hostonly interface name> <hostonly ip> netmask <hostonly subnet> up
+--***
+perl -pi -e "s/device = eth1/device = ${sms_eth_internal}/" /etc/warewulf/provision.con     ----ens36
+perl -pi -e "s/^\s+disable\s+= yes/ disable = no/" /etc/xinetd.d/tftp
+ifconfig ${sms_eth_internal} ${sms_ip} netmask ${internal_netmask} up    ------ens36 ip subnet
+-----
+# Restart/enable relevant services to support provisioning
+systemctl restart xinetd
+systemctl enable mariadb.service
+systemctl restart mariadb
+systemctl enable httpd.service
+systemctl restart httpd
+systemctl enable dhcpd.service
+# Define chroot location
+export CHROOT=/opt/ohpc/admin/images/centos7.7
+# Build initial chroot image
+wwmkchroot centos-7 $CHROOT
+# Install compute node base meta-package
+yum -y --installroot=$CHROOT install ohpc-base-compute
+cp -p /etc/resolv.conf $CHROOT/etc/resolv.conf
+# Add kernel drivers
+yum -y --installroot=$CHROOT install kernel
+# Include modules user environment
+yum -y --installroot=$CHROOT install lmod-ohpc
+# Initialize warewulf database and ssh_keys
+wwinit database
+wwinit ssh_keys
+#Import files
+wwsh file import /etc/passwd
+wwsh file import /etc/group
+wwsh file import /etc/shadow
+#Include drivers from kernel updates; needed if enabling additional kernel modules on computes
+export WW_CONF=/etc/warewulf/bootstrap.conf
+echo "drivers += updates/kernel/" >> $WW_CONF
+#Include overlayfs drivers; needed by Singularity
+echo "drivers += overlay" >> $WW_CONF
+# Build bootstrap image
+wwbootstrap `uname -r`
+#Ansible virtual node file system:
+wwvnfs --chroot $CHROOT
+# Set provisioning interface as the default networking device
+echo "GATEWAYDEV=${eth_provision}" > /tmp/network.$$         -----------ens36
+wwsh -y file import /tmp/network.$$ --name network
+wwsh -y file set network --path /etc/sysconfig/network --mode=0644 --uid=0
+# Add nodes to Warewulf data store
+wwsh -y node new cn01 --ipaddr=${c_ip[i]} --hwaddr=${c_mac[i]} -D ${eth_provision}
+wwsh -y node new <node name> --ipaddr=<ip for client> --hwaddr=<client > -D <enterface name>
+#got the error here and solved we just need to mak the manuall entry of network interface hosts .
+# Define provisioning image for hosts
+wwsh -y provision set "cn01" --vnfs=centos7.7 --bootstrap=`uname -r` --files=dynamic_hosts,passwd,group,shadow,network
+# Restart dhcp / update PXE
+systemctl restart dhcpd
+wwsh pxe update
+--error
+Check /etc/warewulf/provision.conf file change manually network device to ens36
+network device ens36 
+-----
+# restart client vm device make sure client vm has minimum of 8 gb ram and 60 gb hardisk and an
+interface configured in hostonly network same as host master vm .
+difference between Xcat and Warewulf
+Warewulf is easy to pick up and use.
+xCAT is more complex, but offers more functionality such as compute node discovery and auto-
+configuration, firmware updates, etc. So xCAT is better when dealing with more complex setups and
+more management functionality beyond provisioning is needed.
